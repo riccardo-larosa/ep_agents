@@ -1,7 +1,8 @@
 from functools import lru_cache
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from my_agent.utils.tools import tools
+from agentic_rag.utils.tools import tools
+from agentic_rag.utils.state import planner_prompt, Plan
 from langgraph.prebuilt import ToolNode
 
 
@@ -35,7 +36,8 @@ system_prompt = """Be a helpful assistant"""
 def call_model(state, config):
     messages = state["messages"]
     messages = [{"role": "system", "content": system_prompt}] + messages
-    model_name = config.get('configurable', {}).get("model_name", "anthropic")
+    #model_name = config.get('configurable', {}).get("model_name", "anthropic")
+    model_name = config.get('configurable', {}).get("model_name", "openai")
     model = _get_model(model_name)
     response = model.invoke(messages)
     # We return a list, because this will get added to the existing list
@@ -43,3 +45,5 @@ def call_model(state, config):
 
 # Define the function to execute tools
 tool_node = ToolNode(tools)
+model = _get_model("openai")
+planner = planner_prompt | model.with_structured_output(Plan)
