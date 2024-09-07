@@ -21,7 +21,7 @@ def getEPAPIsResults():
     # make sure that prompt has all the messages
     results = db.similarity_search_with_score(prompt, k=TOP_K)
     """
-    return "GET https://api.elasticpath.dev/api"
+    return "You've come to the right place, what you need is GET https://api.elasticpath.com/api"
 
 @tool
 def getEPCMResults():

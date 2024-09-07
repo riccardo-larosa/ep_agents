@@ -2,7 +2,7 @@ from functools import lru_cache
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from agentic_rag.utils.tools import tools
-from agentic_rag.utils.state import planner_prompt, Plan
+from agentic_rag.utils.state import planner_prompt, Plan, PlanExecute
 from langgraph.prebuilt import ToolNode
 
 
@@ -32,7 +32,7 @@ def should_continue(state):
 
 system_prompt = """Be a helpful assistant"""
 
-# Define the function that calls the model
+# Define the function that calls the model. This is like agent(state)
 def call_model(state, config):
     messages = state["messages"]
     messages = [{"role": "system", "content": system_prompt}] + messages
@@ -47,3 +47,7 @@ def call_model(state, config):
 tool_node = ToolNode(tools)
 model = _get_model("openai")
 planner = planner_prompt | model.with_structured_output(Plan)
+
+def plan_step(state: PlanExecute):
+    plan = planner.ainvoke({"messages": [("user", state["input"])]})
+    return {"plan": plan.steps}

@@ -6,7 +6,7 @@ os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
 inputs = {
     "messages": [
-        ("user", "who is the overall top scorer for the celtics?"),
+        ("user", "what is the right apis for pxm "),
     ]
 }
 for output in graph.stream(inputs):
