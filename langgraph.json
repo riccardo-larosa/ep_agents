@@ -1,15 +1,11 @@
 {
   "dockerfile_lines": [],
   "graphs": {
-    "adaptive_rag": "./all_agents/adaptive_rag/adaptive_rag.py:graph",
-    "cm_agent": "./all_agents/cm_agent/agent.py:graph"
+    "cm_rag": "./all_agents/cm_agent_pr/cm_agent/main.py:graph"
   },
   "env": "./.env",
   "python_version": "3.11",
   "dependencies": [
-    "./all_agents/cm_agent",
-    "./all_agents/adaptive_rag",
-    "./all_agents",
-    "."
+     "./all_agents/cm_agent_pr"
   ]
 }

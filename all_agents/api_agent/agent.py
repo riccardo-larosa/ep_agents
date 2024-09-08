@@ -7,6 +7,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, END
@@ -22,7 +23,7 @@ os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
 
 ###########################################
-# First Plan Execution: need a plan, planning prompt and a model (planner)
+### Classes and Utils
 
 class PlanExecute(TypedDict):
     input: str
@@ -36,6 +37,10 @@ class Plan(BaseModel):
     steps: List[str] = Field(
         description="different steps to follow, should be in sorted order"
     )
+def get_tools():
+    tools = [TavilySearchResults(max_results=3)] 
+    #tools = [ get_CM_answer] 
+    return tools
 
 def get_planner_agent():
     planner_prompt = ChatPromptTemplate.from_messages(
@@ -56,8 +61,7 @@ def get_planner_agent():
     return planner
     
 def get_execution_agent():
-    #TODO: make a tool fuction 
-    tools = [TavilySearchResults(max_results=3)] 
+    tools = get_tools()
     #exec_prompt = ChatPromptTemplate.from_messages(
     #    [
     #        (
@@ -97,7 +101,7 @@ def get_replanner_agent():
     )
     replanner = replanner_prompt | ChatOpenAI(
                 model="gpt-4o", temperature=0
-            ).with_structured_output(Act)
+            ).with_structured_output(Action)
     return replanner
 
 class Response(BaseModel):
@@ -105,7 +109,7 @@ class Response(BaseModel):
 
     response: str
 
-class Act(BaseModel):
+class Action(BaseModel):
     """Action to perform."""
 
     action: Union[Response, Plan] = Field(
@@ -113,6 +117,67 @@ class Act(BaseModel):
         "If you need to further use tools to get the answer, use Plan."
     )
 
+from langchain_mongodb import MongoDBAtlasVectorSearch
+from pymongo import MongoClient
+from langchain_openai import OpenAIEmbeddings
+
+def get_CM_doc(prompt):
+    """get retriever to query Elastic Path documentation for Commerce Manager"""
+    MONGODB_ATLAS_CLUSTER_URI = os.getenv("MONGODB_ATLAS_CLUSTER_URI")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
+    db_name = "rag_db"
+    collection_name = "epdocs_openaiembeddings"
+    atlas_collection = client[db_name][collection_name]
+    vector_search_index = "vector_index"
+    # Create a MongoDBAtlasVectorSearch object
+    db = MongoDBAtlasVectorSearch.from_connection_string(
+        MONGODB_ATLAS_CLUSTER_URI,
+        db_name + "." + collection_name,
+        embeddings,
+        index_name = vector_search_index
+    )
+    # TODO: I could 'pre-filter' the query if I know I want something specific from the docs 
+    results = db.similarity_search_with_score(prompt, k=4)
+    return results
+
+############################################
+### Tools
+@tool
+def get_CM_answer(question):
+    """Use this to find the right information from Commerce Manager for Elastic Path queries that don't require an API.
+        This tool is geared towards users who are looking for information on how to use Commerce Manager.
+    """
+    PROMPT_TEMPLATE = """
+        \n\n\033[33m--------------------------\033[0m\n\n
+        You are knowledgeable about Elastic Path products. You can answer any questions about 
+        Commerce Manager, 
+        Product Experience Manager also known as PXM,
+        Cart and Checkout,
+        Promotions,
+        Composer,
+        Payments
+        Subscriptions,
+        Studio.
+        {prompt_base}
+        Answer the question based only on the following context:
+        \n\033[33m--------------------------\033[0m\n
+        {context}
+        \n\033[33m--------------------------\033[0m\n
+        Answer the question based on the above context: {question}
+        \n\033[33m--------------------------\033[0m\n
+        """
+    PROMPT_BASE = """
+        Build any of the relative links using https://elasticpath.dev as the root
+        """
+    results = get_CM_doc(question)
+    context_text = "\n\n\033[32m--------------------------\033[0m\n\n".join([doc.page_content for doc, _score in results])
+    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+    prompt_context = prompt_template.format(prompt_base=PROMPT_BASE, context=context_text, question=question)
+    model = ChatOpenAI(temperature=0.7, model="gpt-4o")
+    response = model.invoke(prompt_context)
+
+    return response.content 
 ############################################
 ### Nodes
 async def create_plan(state: PlanExecute):
@@ -144,7 +209,8 @@ async def execute_step(state: PlanExecute):
     # I need to fix this, it's giving me error: "Expected mapping type as input to PromptTemplate. Received <class 'list'>.""
     # agent_executor = get_execution_agent()
     print(task_formatted)
-    tools = [TavilySearchResults(max_results=3)]
+    #tools = [TavilySearchResults(max_results=3)]
+    tools = get_tools()
     prompt = hub.pull("wfh/react-agent-executor")
     prompt.pretty_print()
     llm = ChatOpenAI(model="gpt-4o")
@@ -172,6 +238,7 @@ async def replan_step(state: PlanExecute):
         plan (list): a new set of steps to follow  
     """
     replanner_agent = get_replanner_agent()
+    print(f"State: {state}")
     output = await replanner_agent.ainvoke(state)
     print(f"$$$$$ Replanner output: {output}")
     if isinstance(output.action, Response):
