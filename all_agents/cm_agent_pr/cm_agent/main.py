@@ -23,6 +23,8 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
+MODEL_RETRIEVAL = "gpt-3.5-turbo" #gpt-4o-mini
+MODEL_GENERATION = "gpt-3.5-turbo"
 
 def get_CM_docs(question):
     """get retriever to query Elastic Path documentation for Commerce Manager"""
@@ -46,7 +48,7 @@ def get_CM_docs(question):
 
 def get_retrieval_grader():
     # LLM with function call
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
     structured_llm_grader = llm.with_structured_output(GradeDocuments)
 
     # Prompt
@@ -121,7 +123,7 @@ def grade_retrieved_documents(state: GraphState) -> GraphState:
     question = state["question"]
     documents = state["documents"]
     # LLM with function call
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
     structured_llm_grader = llm.with_structured_output(GradeDocuments)
 
     # Prompt
@@ -188,7 +190,7 @@ def generate_response(state: GraphState) -> GraphState:
     context_text = "\n\n\033[32m---------------\033[0m\n\n".join([doc.page_content for doc, _score in documents])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt_context = prompt_template.format(prompt_base=PROMPT_BASE, context=context_text, question=question)
-    model = ChatOpenAI(temperature=0.7, model="gpt-4o")
+    model = ChatOpenAI(temperature=0.7, model=MODEL_GENERATION)
     response = model.invoke( prompt_context)
     #rag_chain = prompt_context | model | StrOutputParser()
     #generation = rag_chain.invoke({"context": documents, "question": question})

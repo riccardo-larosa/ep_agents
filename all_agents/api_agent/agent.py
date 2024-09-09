@@ -5,7 +5,8 @@ from typing import Annotated, List, Tuple, TypedDict
 import operator
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_community.agent_toolkits.openapi import API_PLANNER_PROMPT
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
@@ -42,23 +43,47 @@ def get_tools():
     #tools = [ get_CM_answer] 
     return tools
 
-def get_planner_agent():
-    planner_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                SystemMessage(
-                    content="""For the given objective, come up with a simple step by step plan. \
-                    This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. \
-                    The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps."""
-                )
-            ),
-            ("placeholder", "{messages}"),
-        ]
+def get_planner_agent(openAPIspec):
+    # look through the endpoints descriptions to find the right APIs to call
+    """
+    planner that plans a sequence of API calls to assist with user queries against an API
+    """
+    endpoint_descriptions = [
+        f"{name} {description}" for name, description, _ in openAPIspec.endpoints
+    ]
+    endpoints = {"endpoints": "- " + "- ".join(endpoint_descriptions)}
+    planner_prompt = PromptTemplate(
+        template=API_PLANNER_PROMPT,
+        input_variables=["query"],
+        partial_variables=endpoints,
     )
     planner = planner_prompt | ChatOpenAI(
                 model="gpt-4o", temperature=0
             ).with_structured_output(Plan)
     return planner
+
+def get_orchestrator():
+    """
+    Agent that assists with user queries against API, things like querying information or creating resources.
+    Some user queries can be resolved in a single API call, particularly if we can find appropriate params from the OpenAPI spec; 
+    though some require several API calls.
+    Always plan your API calls first, and then execute the plan second.
+    """
+    return
+
+def get_controller_agent():
+    """
+    agent that gets a sequence of API calls and given their documentation, 
+    should execute them and return the final response.
+
+    1. do some regex magic to get the right API calls and all their info from the OPENAPI spec
+    2. then this is passed to the respective agent that does GET, POST, etc. requests using 
+        things like RequestsGetToolWithParsing, RequestsPostToolWithParsing, etc.
+
+
+    """
+    print("Getting controller agent")
+    return 
     
 def get_execution_agent():
     tools = get_tools()
@@ -117,68 +142,10 @@ class Action(BaseModel):
         "If you need to further use tools to get the answer, use Plan."
     )
 
-from langchain_mongodb import MongoDBAtlasVectorSearch
-from pymongo import MongoClient
-from langchain_openai import OpenAIEmbeddings
-
-def get_CM_doc(prompt):
-    """get retriever to query Elastic Path documentation for Commerce Manager"""
-    MONGODB_ATLAS_CLUSTER_URI = os.getenv("MONGODB_ATLAS_CLUSTER_URI")
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    client = MongoClient(MONGODB_ATLAS_CLUSTER_URI)
-    db_name = "rag_db"
-    collection_name = "epdocs_openaiembeddings"
-    atlas_collection = client[db_name][collection_name]
-    vector_search_index = "vector_index"
-    # Create a MongoDBAtlasVectorSearch object
-    db = MongoDBAtlasVectorSearch.from_connection_string(
-        MONGODB_ATLAS_CLUSTER_URI,
-        db_name + "." + collection_name,
-        embeddings,
-        index_name = vector_search_index
-    )
-    # TODO: I could 'pre-filter' the query if I know I want something specific from the docs 
-    results = db.similarity_search_with_score(prompt, k=4)
-    return results
 
 ############################################
 ### Tools
-@tool
-def get_CM_answer(question):
-    """Use this to find the right information from Commerce Manager for Elastic Path queries that don't require an API.
-        This tool is geared towards users who are looking for information on how to use Commerce Manager.
-    """
-    PROMPT_TEMPLATE = """
-        \n\n\033[33m--------------------------\033[0m\n\n
-        You are knowledgeable about Elastic Path products. You can answer any questions about 
-        Commerce Manager, 
-        Product Experience Manager also known as PXM,
-        Cart and Checkout,
-        Promotions,
-        Composer,
-        Payments
-        Subscriptions,
-        Studio.
-        {prompt_base}
-        Answer the question based only on the following context:
-        \n\033[33m--------------------------\033[0m\n
-        {context}
-        \n\033[33m--------------------------\033[0m\n
-        Answer the question based on the above context: {question}
-        \n\033[33m--------------------------\033[0m\n
-        """
-    PROMPT_BASE = """
-        Build any of the relative links using https://elasticpath.dev as the root
-        """
-    results = get_CM_doc(question)
-    context_text = "\n\n\033[32m--------------------------\033[0m\n\n".join([doc.page_content for doc, _score in results])
-    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    prompt_context = prompt_template.format(prompt_base=PROMPT_BASE, context=context_text, question=question)
-    model = ChatOpenAI(temperature=0.7, model="gpt-4o")
-    response = model.invoke(prompt_context)
 
-    return response.content 
-############################################
 ### Nodes
 async def create_plan(state: PlanExecute):
     """Come up with a simple step by step plan given the initial message
