@@ -8,6 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+from langchain_cohere import ChatCohere
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, END
 from typing import Union, Literal
@@ -25,6 +26,7 @@ os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
 MODEL_RETRIEVAL = "gpt-3.5-turbo" #gpt-4o-mini
 MODEL_GENERATION = "gpt-3.5-turbo"
+MODEL_TO_USE = "COHERE"
 
 def get_CM_docs(question):
     """get retriever to query Elastic Path documentation for Commerce Manager"""
@@ -48,7 +50,10 @@ def get_CM_docs(question):
 
 def get_retrieval_grader():
     # LLM with function call
-    llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
+    if MODEL_TO_USE == "OPENAI":    
+        llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
+    else:
+        llm = ChatCohere(model="command-r", temperature=0)
     structured_llm_grader = llm.with_structured_output(GradeDocuments)
 
     # Prompt
@@ -123,7 +128,11 @@ def grade_retrieved_documents(state: GraphState) -> GraphState:
     question = state["question"]
     documents = state["documents"]
     # LLM with function call
-    llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
+    if MODEL_TO_USE == "OPENAI":    
+        llm = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0)
+    else:
+        llm = ChatCohere(model="command-r", temperature=0)
+    
     structured_llm_grader = llm.with_structured_output(GradeDocuments)
 
     # Prompt
@@ -190,7 +199,11 @@ def generate_response(state: GraphState) -> GraphState:
     context_text = "\n\n\033[32m---------------\033[0m\n\n".join([doc.page_content for doc, _score in documents])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt_context = prompt_template.format(prompt_base=PROMPT_BASE, context=context_text, question=question)
-    model = ChatOpenAI(temperature=0.7, model=MODEL_GENERATION)
+    if MODEL_TO_USE == "OPENAI":    
+        model = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0.7)
+    else:
+        model = ChatCohere(model="command-r", temperature=0.7)
+    #model = ChatOpenAI(temperature=0.7, model=MODEL_GENERATION)
     response = model.invoke( prompt_context)
     #rag_chain = prompt_context | model | StrOutputParser()
     #generation = rag_chain.invoke({"context": documents, "question": question})
@@ -211,7 +224,11 @@ def rewrite_query(state):
 
     print("---REWRITE QUERY---")
     question = state["question"]
-    model = ChatOpenAI(model="gpt-4o", temperature=0)
+    if MODEL_TO_USE == "OPENAI":    
+        model = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0.7)
+    else:
+        model = ChatCohere(model="command-r", temperature=0.7)
+    #model = ChatOpenAI(model="gpt-4o", temperature=0)
     system = """You are a question re-writer that converts an input question to a better version that is optimized \n 
         for vectorstore retrieval. Look at the input and try to reason about the underlying semantic intent / meaning."""
     re_write_prompt = ChatPromptTemplate.from_messages(

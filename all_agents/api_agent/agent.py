@@ -77,7 +77,7 @@ def get_controller_agent():
     should execute them and return the final response.
 
     1. do some regex magic to get the right API calls and all their info from the OPENAPI spec
-    2. then this is passed to the respective agent that does GET, POST, etc. requests using 
+    2. then this is passed to the respective agent/tools that does GET, POST, etc. requests using 
         things like RequestsGetToolWithParsing, RequestsPostToolWithParsing, etc.
 
 
