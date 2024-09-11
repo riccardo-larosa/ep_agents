@@ -4,8 +4,8 @@ import os, pprint
 from typing import Annotated, List, Tuple, TypedDict
 import operator
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_community.agent_toolkits.openapi import API_PLANNER_PROMPT
+#from langchain_community.tools.tavily_search import TavilySearchResults
+#from langchain_community.agent_toolkits.openapi import API_PLANNER_PROMPT
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -14,6 +14,13 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, END
 from typing import Union, Literal
 from langchain import hub
+from langchain_community.agent_toolkits.openapi.spec import reduce_openapi_spec, ReducedOpenAPISpec
+import yaml, re
+from langchain_core.tools import BaseTool, Tool
+from langchain_community.utilities.requests import RequestsWrapper
+from langchain_community.agent_toolkits.openapi.planner import RequestsGetToolWithParsing
+from langchain.chains.llm import LLMChain
+from langchain_community.agent_toolkits.openapi.planner_prompt import PARSING_GET_PROMPT
 
 #from dotenv import load_dotenv
 #load_dotenv(override=True)
@@ -22,12 +29,14 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
+ACCESS_TOKEN="180df4ace583f0f4ed335b23c9098abafe5bd6bc"
 
 ###########################################
 ### Classes and Utils
 
 class PlanExecute(TypedDict):
     input: str
+    openAPIspec: ReducedOpenAPISpec
     plan: List[str]
     past_steps: Annotated[List[List], operator.add]
     response: str
@@ -38,25 +47,68 @@ class Plan(BaseModel):
     steps: List[str] = Field(
         description="different steps to follow, should be in sorted order"
     )
-def get_tools():
-    tools = [TavilySearchResults(max_results=3)] 
-    #tools = [ get_CM_answer] 
+
+def auth_headers():
+    return {"Authorization": f"Bearer {ACCESS_TOKEN}"}
+
+def get_tools(task):
+    #tools = [TavilySearchResults(max_results=3)] 
+    prompt_get = """
+        
+        Your task is to extract some information according to these instructions: {instructions}
+        When working with API objects, you should usually use ids over names.
+        If the response indicates an error, you should instead output a summary of the error.
+
+        Output:
+        """.format(instructions=task).replace("{", "{{").replace("}", "}}")
+    tool_prompt = ChatPromptTemplate.from_messages(
+        [("system", prompt_get),("placeholder", "{messages}"),]
+    )
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm_chain = tool_prompt | llm
+    headers = auth_headers()
+    requests_wrapper = RequestsWrapper(headers=headers)
+    tools : List[BaseTool] =[]
+    tools.append(
+        RequestsGetToolWithParsing(
+            requests_wrapper=requests_wrapper,
+            llm_chain = llm_chain,
+            allow_dangerous_requests=True,
+            allowed_operations=["GET"],)
+    ) 
+    print(f"Tools ------------- {tools}")
     return tools
 
 def get_planner_agent(openAPIspec):
     # look through the endpoints descriptions to find the right APIs to call
-    """
-    planner that plans a sequence of API calls to assist with user queries against an API
-    """
     endpoint_descriptions = [
         f"{name} {description}" for name, description, _ in openAPIspec.endpoints
     ]
-    endpoints = {"endpoints": "- " + "- ".join(endpoint_descriptions)}
-    planner_prompt = PromptTemplate(
-        template=API_PLANNER_PROMPT,
-        input_variables=["query"],
-        partial_variables=endpoints,
+    endpoints =  "- ".join(endpoint_descriptions)
+    sysprompt = """
+            You are an agent that assists with user queries against API, things like querying information or creating resources.
+            Some user queries can be resolved in a single API call, particularly if you can find appropriate params from the OpenAPI spec; though some require several API calls.
+            You should always plan your API calls first, and then execute the plan second.
+            If the plan includes a DELETE call, be sure to ask the User for authorization first unless the User has specifically asked to delete something.
+            You should never return information without executing the api_controller tool.
+
+            Each plan can be used to generate the right API calls to assist with a user query. 
+            You should always have a plan before trying to call the API controller.
+
+            api_controller: Can be used to execute a plan of API calls, like api_controller(plan).
+                                                            
+            The API endpoints are {endpoints}.
+
+            For the given objective, come up with a simple step by step plan. 
+            This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. 
+            The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+            """.format(endpoints=endpoints).replace("{", "{{").replace("}", "}}")
+    #print(sysprompt)
+    planner_prompt = ChatPromptTemplate.from_messages(
+        [("system", sysprompt),("placeholder", "{messages}"),]
     )
+    print("Getting planner agent")
+    #print(planner_prompt)
     planner = planner_prompt | ChatOpenAI(
                 model="gpt-4o", temperature=0
             ).with_structured_output(Plan)
@@ -71,32 +123,34 @@ def get_orchestrator():
     """
     return
 
-def get_controller_agent():
+def get_api_docs(task, api_spec):
     """
-    agent that gets a sequence of API calls and given their documentation, 
-    should execute them and return the final response.
-
-    1. do some regex magic to get the right API calls and all their info from the OPENAPI spec
-    2. then this is passed to the respective agent/tools that does GET, POST, etc. requests using 
-        things like RequestsGetToolWithParsing, RequestsPostToolWithParsing, etc.
-
+    get the relevant API documentation for the task
 
     """
-    print("Getting controller agent")
-    return 
+    pattern = r"\b(GET|POST|PATCH|DELETE|PUT)\s+(/\S+)*"
+    matches = re.findall(pattern, task)
+    endpoint_names = [
+        "{method} {route}".format(method=method, route=route.split("?")[0])
+        for method, route in matches
+    ]
+    docs_str = ""
+    for endpoint_name in endpoint_names:
+        found_match = False
+        for name, _, docs in api_spec.endpoints:
+            regex_name = re.compile(re.sub(r"\{.*?\}", ".*", name))
+            if regex_name.match(endpoint_name):
+                found_match = True
+                docs_str += f"== Docs for {endpoint_name} == \n{yaml.dump(docs)}\n"
+        if not found_match:
+            raise ValueError(f"{endpoint_name} endpoint does not exist.")
+
+    #print(docs_str)
+    return docs_str
     
 def get_execution_agent():
+    #TODO: NOT USED
     tools = get_tools()
-    #exec_prompt = ChatPromptTemplate.from_messages(
-    #    [
-    #        (
-    #            SystemMessage(
-    #                content="""You are a helpful assistant"""
-    #            )
-    #        ),
-    #        ("placeholder", "{messages}"),
-    #    ]
-    #)
     exec_prompt = hub.pull("hwchase17/react")
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
     agent_executor = create_react_agent(llm, tools, messages_modifier=exec_prompt)
@@ -155,10 +209,14 @@ async def create_plan(state: PlanExecute):
     Returns: 
         plan (dict): A list of steps to follow 
     """
-    planner_agent = get_planner_agent()
+    with open("./openapispecs/catalog/catalog_view.yaml") as f:
+        raw_openapi_spec = yaml.load(f, Loader=yaml.Loader)
+    openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
+    #state["openAPIspec"] = openapi_spec
+    planner_agent = get_planner_agent(openapi_spec)
     plan = await planner_agent.ainvoke({"messages": [("user", state["input"])]})
     #print(f"Here is the plan: {plan}")
-    return {"plan": plan.steps}
+    return {"plan": plan.steps, "openAPIspec": openapi_spec}
 
 async def execute_step(state: PlanExecute):
     """Execute the plan
@@ -176,12 +234,32 @@ async def execute_step(state: PlanExecute):
     # I need to fix this, it's giving me error: "Expected mapping type as input to PromptTemplate. Received <class 'list'>.""
     # agent_executor = get_execution_agent()
     print(task_formatted)
-    #tools = [TavilySearchResults(max_results=3)]
-    tools = get_tools()
-    prompt = hub.pull("wfh/react-agent-executor")
-    prompt.pretty_print()
+    #TODO: add tools to perform GET, POST, etc. requests
+    tools = get_tools(task)
+    api_url = "https://useast.api.elasticpath.com"
+    openAPIspec = state["openAPIspec"]
+    api_docs = get_api_docs(task, openAPIspec)
+    prompt = """You are an agent that gets a sequence of API calls and given their documentation, should execute them and return the final response.
+            If you cannot complete them and run into issues, you should explain the issue. 
+            If you're unable to resolve an API call, you can retry the API call. 
+            When interacting with API objects, you should extract ids for inputs to other API calls but ids and names for outputs returned to the User.
+
+            Here is documentation on the API:
+            Base url: {api_url}
+            Endpoints:
+            {api_docs}
+
+
+            Here are tools to execute requests against the API: RequestsGetToolWithParsing. 
+            Make sure that  you pass a valid JSON object to RequestGetToolWithParsing.
+            JSON requires double quotes (") for strings, not single quotes (').
+            """.format(api_url=api_url, api_docs=api_docs).replace("{", "{{").replace("}", "}}")
+    print(prompt)
+    exec_prompt = ChatPromptTemplate.from_messages(
+        [("system", prompt),("placeholder", "{messages}"),]
+    )
     llm = ChatOpenAI(model="gpt-4o")
-    agent_executor = create_react_agent(llm, tools, messages_modifier=prompt)
+    agent_executor = create_react_agent(llm, tools, state_modifier=exec_prompt)
     agent_response = await agent_executor.ainvoke(
         {"messages": [("user", task_formatted)]}
     )
@@ -205,9 +283,9 @@ async def replan_step(state: PlanExecute):
         plan (list): a new set of steps to follow  
     """
     replanner_agent = get_replanner_agent()
-    print(f"State: {state}")
+    #print(f"State: {state}")
     output = await replanner_agent.ainvoke(state)
-    print(f"$$$$$ Replanner output: {output}")
+    #print(f"$$$$$ Replanner output: {output}")
     if isinstance(output.action, Response):
         return {"response": output.action.response}
     else:
@@ -241,17 +319,18 @@ workflow.add_conditional_edges("replanner", should_end,)
 
 graph = workflow.compile()
 
-"""
-config = {"recursion_limit": 50}
-input = {"input": "what is the hometown of the 2024 Australia open winner"}
+
+config = {"recursion_limit": 20}
+input = {"input": "show me all the nodes"}
+
 import asyncio
 async def run_workflow():
     async for output in graph.astream(input, config=config):
         for key, value in output.items():
             # Node
             #pprint.pprint(f"Output from node '{key}':")
-            pprint.pprint(f"{key} ---")
-            pprint.pprint(value)
+            #pprint.pprint(f"{key} ---")
+            #pprint.pprint(value)
             # Optional: print full state at each node
             if key != "__end__":
                 print(value)
@@ -262,4 +341,3 @@ try:
 finally:
     #wait_for_all_tracers()
     print("Tracers are done")
-"""
