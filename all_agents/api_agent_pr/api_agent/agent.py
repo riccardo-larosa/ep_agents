@@ -29,7 +29,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
-ACCESS_TOKEN="180df4ace583f0f4ed335b23c9098abafe5bd6bc"
+ACCESS_TOKEN="b9d1989f8e5b2855139a84710e6350082bbe8757"
 
 ###########################################
 ### Classes and Utils
@@ -52,7 +52,7 @@ def auth_headers():
     return {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
 def get_tools(task):
-    #tools = [TavilySearchResults(max_results=3)] 
+    
     prompt_get = """
         
         Your task is to extract some information according to these instructions: {instructions}
@@ -64,7 +64,7 @@ def get_tools(task):
     tool_prompt = ChatPromptTemplate.from_messages(
         [("system", prompt_get),("placeholder", "{messages}"),]
     )
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
     llm_chain = tool_prompt | llm
     headers = auth_headers()
     requests_wrapper = RequestsWrapper(headers=headers)
@@ -76,13 +76,13 @@ def get_tools(task):
             allow_dangerous_requests=True,
             allowed_operations=["GET"],)
     ) 
-    print(f"Tools ------------- {tools}")
+    #print(f"Tools ------------- {tools}")
     return tools
 
 def get_planner_agent(openAPIspec):
     # look through the endpoints descriptions to find the right APIs to call
     endpoint_descriptions = [
-        f"{name} {description}" for name, description, _ in openAPIspec.endpoints
+        f"{name} {description[:20]}" if description is not None else "" for name, description, _ in openAPIspec.endpoints
     ]
     endpoints =  "- ".join(endpoint_descriptions)
     sysprompt = """
@@ -212,7 +212,6 @@ async def create_plan(state: PlanExecute):
     with open("./openapispecs/catalog/catalog_view.yaml") as f:
         raw_openapi_spec = yaml.load(f, Loader=yaml.Loader)
     openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
-    #state["openAPIspec"] = openapi_spec
     planner_agent = get_planner_agent(openapi_spec)
     plan = await planner_agent.ainvoke({"messages": [("user", state["input"])]})
     #print(f"Here is the plan: {plan}")
@@ -252,9 +251,9 @@ async def execute_step(state: PlanExecute):
 
             Here are tools to execute requests against the API: RequestsGetToolWithParsing. 
             Make sure that  you pass a valid JSON object to RequestGetToolWithParsing.
-            JSON requires double quotes (") for strings, not single quotes (').
+            
             """.format(api_url=api_url, api_docs=api_docs).replace("{", "{{").replace("}", "}}")
-    print(prompt)
+    #print(prompt)
     exec_prompt = ChatPromptTemplate.from_messages(
         [("system", prompt),("placeholder", "{messages}"),]
     )
@@ -283,9 +282,9 @@ async def replan_step(state: PlanExecute):
         plan (list): a new set of steps to follow  
     """
     replanner_agent = get_replanner_agent()
-    #print(f"State: {state}")
+    print(f"State: {state}")
     output = await replanner_agent.ainvoke(state)
-    #print(f"$$$$$ Replanner output: {output}")
+    print(f"$$$$$ Replanner output: {output}")
     if isinstance(output.action, Response):
         return {"response": output.action.response}
     else:
@@ -320,20 +319,22 @@ workflow.add_conditional_edges("replanner", should_end,)
 graph = workflow.compile()
 
 
-config = {"recursion_limit": 20}
-input = {"input": "show me all the nodes"}
+config = {"recursion_limit": 10}
+input = {"input": "show me all the product for the node named running"}
 
 import asyncio
 async def run_workflow():
     async for output in graph.astream(input, config=config):
         for key, value in output.items():
             # Node
-            #pprint.pprint(f"Output from node '{key}':")
-            #pprint.pprint(f"{key} ---")
-            #pprint.pprint(value)
+            print(f"\033[93mOutput from node '{key}':\033[0m")
+            if key == "planner" and value is not None:
+                pprint.pprint( str(value)[:100])
+            else:
+                pprint.pprint(value)
             # Optional: print full state at each node
-            if key != "__end__":
-                print(value)
+            #if key != "__end__":
+            #    print(f"\033[92m{value}\033[0m")
         print("\n---\n")
 
 try: 

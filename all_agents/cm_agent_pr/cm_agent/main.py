@@ -24,9 +24,9 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["LANGCHAIN_PROJECT"]="ep_agents"
 os.environ["LANGCHAIN_TRACING_V2"]="true"
-MODEL_RETRIEVAL = "gpt-3.5-turbo" #gpt-4o-mini
-MODEL_GENERATION = "gpt-3.5-turbo"
-MODEL_TO_USE = "COHERE"
+MODEL_RETRIEVAL =  "gpt-4o-mini" #"gpt-3.5-turbo"
+MODEL_GENERATION = "gpt-4o"
+MODEL_TO_USE = "OPENAI" #"COHERE"
 
 def get_CM_docs(question):
     """get retriever to query Elastic Path documentation for Commerce Manager"""
@@ -45,7 +45,7 @@ def get_CM_docs(question):
         index_name = vector_search_index
     )
     # TODO: I could 'pre-filter' the query if I know I want something specific from the docs 
-    results = db.similarity_search_with_score(question, k=4)
+    results = db.similarity_search_with_score(question, k=5)
     return results
 
 def get_retrieval_grader():
@@ -200,7 +200,7 @@ def generate_response(state: GraphState) -> GraphState:
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt_context = prompt_template.format(prompt_base=PROMPT_BASE, context=context_text, question=question)
     if MODEL_TO_USE == "OPENAI":    
-        model = ChatOpenAI(model=MODEL_RETRIEVAL, temperature=0.7)
+        model = ChatOpenAI(model=MODEL_GENERATION, temperature=0.7)
     else:
         model = ChatCohere(model="command-r", temperature=0.7)
     #model = ChatOpenAI(temperature=0.7, model=MODEL_GENERATION)
