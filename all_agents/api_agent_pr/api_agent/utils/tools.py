@@ -43,6 +43,15 @@ def exec_put_request( endpoint: str, token: str, body: dict = None, baseurl=get_
     response.raise_for_status()
     return response.json()
 
+@tool
+def exec_delete_request( endpoint: str, token: str, body: dict = None,baseurl=get_baseurl()):
+    """
+    Executes a DELETE request to the specified endpoint.
+    """
+    response = requests.delete(baseurl + endpoint, headers=create_headers(token), json=body)
+    response.raise_for_status()
+    return response.json()
+
 
 @tool
 def get_API_spec(text):
@@ -75,6 +84,7 @@ tools = [
          exec_get_request, 
          exec_post_request, 
          exec_put_request,
+         exec_delete_request,
          get_API_spec]
 
 #TavilySearchResults(max_results=1), 

@@ -23,6 +23,7 @@ def find_match_for_endpoint(input_string):
     sys_prompt = sys_prompt_tpl.invoke(
         {"input": input, "apiendpoints": endpoints}
     )
+    
     matcher = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     response = matcher.invoke( sys_prompt)
     return response.content
@@ -61,6 +62,8 @@ def get_OpenAPI_spec_for_endpoint(endpoint: str):
     response = requests.get(url)
     if response.status_code == 200:
         raw_openapi_spec = yaml.safe_load(response.text)
+    else:
+        raise ValueError(f"Failed to fetch OpenAPI spec: {response.text}")
 
     openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
     # TODO: remember that I had to change the dereference function and added skip_keys=["examples"]
