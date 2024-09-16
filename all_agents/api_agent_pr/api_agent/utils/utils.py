@@ -4,8 +4,12 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from api_agent.utils.yaml_loader import YamlLoader
 
-#url = "https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/catalog/catalog_view.yaml"
-urls = ["https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/pim/pim.yaml"]
+urls = ["https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/files/files.yaml",
+        "https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/currencies/OpenAPISpec.yaml",
+        "https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/pim/pim.yaml",
+        "https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/commerceextensions/OpenAPISpec.yaml"]
+
+#"https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/catalog/catalog_view.yaml"
 
 loader = YamlLoader(urls)
 
@@ -18,7 +22,8 @@ def find_match_for_endpoint(input_string):
     sys_prompt_str = """
         Agent that given an {input} can find the most appropriate API endpoint to answer the plan. 
         You can only use these API endpoints {apiendpoints} descriptions to find the right one.
-        Your answer should be in the format of "GET /pcm/products/{{product_id}}" or "POST /products" and not include the description.
+        Your answer should be in the format of "https://locationforyaml.yaml|GET /pcm/products/{{product_id}}" or 
+        "https://anotherlocationforyaml.yaml|POST /products" and not include the description.
     """
     
     sys_prompt_tpl = ChatPromptTemplate([
@@ -39,11 +44,21 @@ def get_API_names_description():
     Returns a list of API names and descriptions.
     """
     #TODO: right now it only works with one url but eventually, it should use a list and this next line needs to change
-    raw_openapi_spec = next(iter(loader.get_data().values())) 
-    openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
-    endpoint_descriptions = [
-        f"{name} {description[:1000]}" if description is not None else "" for name, description, _ in openapi_spec.endpoints
-    ]
+    raw_specs = loader.get_data()
+    endpoint_descriptions = []
+    for url, spec in raw_specs.items():
+        openapi_spec = reduce_openapi_spec(spec, dereference=False)   
+        for name, description, _ in openapi_spec.endpoints:
+            if description is not None:
+                endpoint_descriptions.append(f"{url}|{name} {description[:1000]}")
+            else:
+                endpoint_descriptions.append(f"{url}|{name}")
+    #endpoints =  "\n ".join(endpoint_descriptions)
+    #raw_openapi_spec = next(iter(loader.get_data().values())) 
+    #openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
+    #endpoint_descriptions = [
+    #    f"{name} {description[:1000]}" if description is not None else "" for name, description, _ in openapi_spec.endpoints
+    #]
     #endpoints =  "\n ".join(endpoint_descriptions)
     
     return endpoint_descriptions
@@ -52,14 +67,18 @@ def get_API_names_description():
 def get_OpenAPI_spec_for_endpoint(endpoint: str):
     """
     Returns the OpenAPI spec for the specified endpoint.
-    It expects an input like "GET /products/{product_id}"
+    It expects an input like "yaml_url|GET /products/{product_id}"
     """
     #TODO: right now it only works with one url but eventually, it should use a list and this next line needs to change
-    raw_openapi_spec = next(iter(loader.get_data().values())) 
-    openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
+    yaml_url, endpoint_method = endpoint.split('|')
+    raw_specs = loader.get_data()
+    for url, spec in raw_specs.items():
+        if url == yaml_url:
+            openapi_spec = reduce_openapi_spec(spec, dereference=False)
+    #openapi_spec = reduce_openapi_spec(raw_openapi_spec, dereference=False)
     # TODO: remember that I had to change the dereference function and added skip_keys=["examples"]
     pattern = r"\b(GET|POST|PATCH|DELETE|PUT)\s+(/\S+)*"
-    matches = re.findall(pattern, endpoint)
+    matches = re.findall(pattern, endpoint_method)
     endpoint_names = [
         "{method} {route}".format(method=method, route=route.split("?")[0])
         for method, route in matches
