@@ -10,11 +10,12 @@ def get_baseurl():
 def create_headers(token: str) -> dict:
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        #"Accept": "application/json"
     }
     return headers
 
-@tool
+
 def exec_get_request( endpoint: str, token: str, params: dict = None, baseurl=get_baseurl()):
     """
     Executes a GET request to the specified endpoint.
@@ -25,26 +26,29 @@ def exec_get_request( endpoint: str, token: str, params: dict = None, baseurl=ge
     
     return response.json()
     
-@tool
-def exec_post_request( endpoint: str, token: str, body: dict = None, baseurl=get_baseurl()):
+
+def exec_post_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a POST request to the specified endpoint.
     """
-    response = requests.post(baseurl + endpoint, headers=create_headers(token), json=body)
+    response = requests.post(baseurl + endpoint, headers=create_headers(token), data=data)
     response.raise_for_status()
     return response.json()
 
-@tool
-def exec_put_request( endpoint: str, token: str, body: dict = None, baseurl=get_baseurl()):
+
+def exec_put_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a PUT request to the specified endpoint.
     """
-    response = requests.put(baseurl + endpoint, headers=create_headers(token), json=body)
+    print(endpoint)
+    print(token)
+    print(data)
+    response = requests.put(baseurl + endpoint, headers=create_headers(token), data=data)
     response.raise_for_status()
     return response.json()
 
-@tool
-def exec_delete_request( endpoint: str, token: str, body: dict = None,baseurl=get_baseurl()):
+
+def exec_delete_request( endpoint: str, token: str, body: dict = None, baseurl=get_baseurl()):
     """
     Executes a DELETE request to the specified endpoint.
     """
@@ -53,7 +57,7 @@ def exec_delete_request( endpoint: str, token: str, body: dict = None,baseurl=ge
     return response.json()
 
 
-@tool
+
 def get_API_spec(text):
     """
     Given a text string in the form of an action, returns the current api spec that will be used to execute the action.

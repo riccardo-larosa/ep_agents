@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "cm-agent"
+version = "0.0.1"
+description = "An excellent agent build for LangGraph cloud."
+authors = ["Polly the parrot <1223+polly@users.noreply.github.com>"]
+license = "Apache 2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.9.0,<3.13"
+langgraph = "^0.2.0"
+langchain-openai = ">=0.1.17"
+langchain-community = ">=0.2.11"
+langchain_mongodb = "*"
+pymongo = "*"
+langchain_anthropic = "*"
+langchain_cohere = "*"
+tavily-python = "*"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

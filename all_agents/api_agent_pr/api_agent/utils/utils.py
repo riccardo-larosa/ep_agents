@@ -1,5 +1,6 @@
 import requests, yaml, re
-from langchain_community.agent_toolkits.openapi.spec import reduce_openapi_spec, ReducedOpenAPISpec
+#from langchain_community.agent_toolkits.openapi.spec import reduce_openapi_spec, ReducedOpenAPISpec
+from api_agent.utils.openapi_spec import reduce_openapi_spec, ReducedOpenAPISpec
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from api_agent.utils.yaml_loader import YamlLoader
@@ -10,6 +11,7 @@ urls = ["https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/open
         "https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/commerceextensions/OpenAPISpec.yaml"]
 
 #"https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/catalog/catalog_view.yaml"
+#"https://raw.githubusercontent.com/elasticpath/elasticpath-dev/main/openapispecs/cartsorders/OpenAPISpec.yaml"
 
 loader = YamlLoader(urls)
 
@@ -96,3 +98,4 @@ def get_OpenAPI_spec_for_endpoint(endpoint: str):
         if not found_match:
             raise ValueError(f"{endpoint_name} endpoint does not exist.")
     return docs_str
+
