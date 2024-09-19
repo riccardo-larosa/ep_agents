@@ -1,6 +1,6 @@
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import tool
-import requests
+import requests, json
 from api_agent.utils.utils import find_match_for_endpoint, get_OpenAPI_spec_for_endpoint
 
 #TODO: we should probably have a class for these
@@ -11,7 +11,7 @@ def create_headers(token: str) -> dict:
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        #"Accept": "application/json"
+        "Accept": "application/json"
     }
     return headers
 
@@ -21,7 +21,7 @@ def exec_get_request( endpoint: str, token: str, params: dict = None, baseurl=ge
     Executes a GET request to the specified endpoint.
     """
     response = requests.get(baseurl + endpoint, headers=create_headers(token), params=params)
-    print(requests)
+    
     response.raise_for_status()
     
     return response.json()
@@ -31,7 +31,8 @@ def exec_post_request( endpoint: str, token: str, data: dict = None, baseurl=get
     """
     Executes a POST request to the specified endpoint.
     """
-    response = requests.post(baseurl + endpoint, headers=create_headers(token), data=data)
+    data_json = json.dumps(data)
+    response = requests.post(baseurl + endpoint, headers=create_headers(token), data=data_json)
     response.raise_for_status()
     return response.json()
 
@@ -40,19 +41,18 @@ def exec_put_request( endpoint: str, token: str, data: dict = None, baseurl=get_
     """
     Executes a PUT request to the specified endpoint.
     """
-    print(endpoint)
-    print(token)
-    print(data)
-    response = requests.put(baseurl + endpoint, headers=create_headers(token), data=data)
+    data_json = json.dumps(data)
+    response = requests.put(baseurl + endpoint, headers=create_headers(token), data=data_json)
     response.raise_for_status()
     return response.json()
 
 
-def exec_delete_request( endpoint: str, token: str, body: dict = None, baseurl=get_baseurl()):
+def exec_delete_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a DELETE request to the specified endpoint.
     """
-    response = requests.delete(baseurl + endpoint, headers=create_headers(token), json=body)
+    data_json = json.dumps(data)
+    response = requests.delete(baseurl + endpoint, headers=create_headers(token), data=data_json)
     response.raise_for_status()
     return response.json()
 
