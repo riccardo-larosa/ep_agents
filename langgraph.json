@@ -2,7 +2,7 @@
   "dockerfile_lines": [],
   "graphs": {
     "api_rag": "./all_agents/api_agent_pr/api_agent/agent.py:graph",
-    "cm_rag": "./all_agents/cm_agent_pr/cm_agent/main.py:graph"
+    "cm_rag": "./all_agents/cm_agent_pr/cm_adaptive_agent/main.py:graph"
   },
   "env": "./.env",
   "python_version": "3.11",
