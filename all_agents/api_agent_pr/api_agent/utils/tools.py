@@ -15,7 +15,7 @@ def create_headers(token: str) -> dict:
     }
     return headers
 
-
+@tool
 def exec_get_request( endpoint: str, token: str, params: dict = None, baseurl=get_baseurl()):
     """
     Executes a GET request to the specified endpoint.
@@ -26,7 +26,7 @@ def exec_get_request( endpoint: str, token: str, params: dict = None, baseurl=ge
     
     return response.json()
     
-
+@tool
 def exec_post_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a POST request to the specified endpoint.
@@ -36,7 +36,7 @@ def exec_post_request( endpoint: str, token: str, data: dict = None, baseurl=get
     response.raise_for_status()
     return response.json()
 
-
+@tool
 def exec_put_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a PUT request to the specified endpoint.
@@ -46,7 +46,7 @@ def exec_put_request( endpoint: str, token: str, data: dict = None, baseurl=get_
     response.raise_for_status()
     return response.json()
 
-
+@tool
 def exec_delete_request( endpoint: str, token: str, data: dict = None, baseurl=get_baseurl()):
     """
     Executes a DELETE request to the specified endpoint.
@@ -57,7 +57,7 @@ def exec_delete_request( endpoint: str, token: str, data: dict = None, baseurl=g
     return response.json()
 
 
-
+@tool
 def get_API_spec(text):
     """
     Given a text string in the form of an action, returns the current api spec that will be used to execute the action.
